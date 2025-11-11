@@ -10,7 +10,7 @@ Tujuan utama proyek ini adalah **membersihkan, menggabungkan, dan menyiapkan dat
 
 ## 🧩 Struktur Direktori
 
-/
+'''
 ├── kaggle_tiktok_reviews/ # Data mentah dari Kaggle
 │ └── kaggle_display_full.csv
 ├── saved_reviews/ # Data hasil scraping Google Play
@@ -27,7 +27,7 @@ Tujuan utama proyek ini adalah **membersihkan, menggabungkan, dan menyiapkan dat
 │ └── display_cleaning_results.py # Script tampilan hasil cleaning
 └── README.md # Dokumentasi proyek
 
----
+'''
 
 ## ⚙️ Instalasi & Persiapan
 
