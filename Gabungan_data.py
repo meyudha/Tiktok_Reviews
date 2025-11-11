@@ -8,23 +8,21 @@ import ipywidgets as widgets
 import warnings
 warnings.filterwarnings("ignore")
 
-# ----------------- CONFIG -----------------
 save_folder = "./merged_reviews"
 os.makedirs(save_folder, exist_ok=True)
 
-# HANYA ambil dari file yang sudah di-save
 gp_file = "./saved_reviews/reviews_display_snapshot.csv"
 kaggle_file = "./kaggle_tiktok_reviews/kaggle_display_full.csv"
 
 rows_per_page = 20000
 display_limit = None
 
-# NAMA FILE OUTPUT TETAP
+
 MASTER_FILE = "merged_reviews_master.csv"
 DISPLAY_SNAPSHOT_FILE = "merged_reviews_display_snapshot.csv"
 PAGE_FILE_PREFIX = "merged_reviews_page"
 
-# ----------------- Helper Functions -----------------
+
 def save_single_file(df, folder, filename):
     """Simpan dataframe dengan hapus file lama terlebih dahulu"""
     if df is None or len(df) == 0:
@@ -48,7 +46,6 @@ def harmonize_columns(df, source_name):
 
     df = df.copy()
 
-    # Mapping kolom ke format standar
     column_map = {}
     for col in df.columns:
         col_lower = col.lower()
@@ -69,13 +66,13 @@ def harmonize_columns(df, source_name):
 
     df = df.rename(columns=column_map)
 
-    # Pastikan semua kolom ada
+
     required_cols = ['review_id', 'user', 'content', 'score', 'thumbs_up', 'app_version', 'created_at']
     for col in required_cols:
         if col not in df.columns:
             df[col] = pd.NA
 
-    # Konversi tipe data
+   
     df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
     df['score'] = pd.to_numeric(df['score'], errors='coerce')
     df['thumbs_up'] = pd.to_numeric(df['thumbs_up'], errors='coerce')
@@ -84,7 +81,7 @@ def harmonize_columns(df, source_name):
 
     return df[['review_id', 'user', 'content', 'score', 'thumbs_up', 'app_version', 'created_at', 'source']]
 
-# ----------------- LOAD DATA -----------------
+
 print("\n" + "="*60)
 print("LOADING SAVED DATA")
 print("="*60)
@@ -92,7 +89,7 @@ print("="*60)
 df_gp = pd.DataFrame()
 df_kaggle = pd.DataFrame()
 
-# Load Google Play data
+
 if os.path.exists(gp_file):
     try:
         df_gp = pd.read_csv(gp_file)
@@ -102,7 +99,7 @@ if os.path.exists(gp_file):
 else:
     print(f"⚠️ File Google Play tidak ditemukan: {gp_file}")
 
-# Load Kaggle data
+
 if os.path.exists(kaggle_file):
     try:
         df_kaggle = pd.read_csv(kaggle_file)
@@ -112,7 +109,6 @@ if os.path.exists(kaggle_file):
 else:
     print(f"⚠️ File Kaggle tidak ditemukan: {kaggle_file}")
 
-# Cek jika tidak ada data
 if len(df_gp) == 0 and len(df_kaggle) == 0:
     print("\n❌ TIDAK ADA DATA YANG DAPAT DIGABUNGKAN!")
     print("   Pastikan file berikut ada:")
@@ -120,7 +116,7 @@ if len(df_gp) == 0 and len(df_kaggle) == 0:
     print(f"   • {kaggle_file}")
     raise SystemExit("Script berhenti karena tidak ada data.")
 
-# ----------------- HARMONIZE -----------------
+
 print("\n" + "="*60)
 print("HARMONIZING DATA")
 print("="*60)
@@ -131,14 +127,14 @@ df_kaggle_harmonized = harmonize_columns(df_kaggle, 'kaggle')
 print(f"✓ Google Play harmonized: {len(df_gp_harmonized):,} rows")
 print(f"✓ Kaggle harmonized: {len(df_kaggle_harmonized):,} rows")
 
-# ----------------- MERGE -----------------
+
 print("\n" + "="*60)
 print("MERGING DATA")
 print("="*60)
 
 df_merged = pd.concat([df_gp_harmonized, df_kaggle_harmonized], ignore_index=True)
 
-# Handle missing user names
+
 mask_bad_user = df_merged['user'].isna() | (df_merged['user'].astype(str).str.lower().str.strip().isin(['google user', 'nan', 'none', '']))
 if mask_bad_user.any():
     df_merged.loc[mask_bad_user, 'user'] = df_merged.loc[mask_bad_user].apply(
@@ -146,7 +142,6 @@ if mask_bad_user.any():
         axis=1
     )
 
-# Hanya sort, TIDAK ada deduplikasi
 df_merged = df_merged.sort_values('created_at', ascending=False, na_position='last').reset_index(drop=True)
 
 total_rows = len(df_merged)
@@ -158,7 +153,6 @@ print(f"   • Dari Google Play: {gp_count:,} rows")
 print(f"   • Dari Kaggle: {kaggle_count:,} rows")
 print(f"   • Total gabungan: {gp_count + kaggle_count:,} rows")
 
-# Deteksi potensi duplikat (hanya info, tidak dihapus)
 if df_merged['review_id'].notna().sum() > 0:
     unique_review_ids = df_merged['review_id'].notna().sum() - df_merged['review_id'].nunique()
     print(f"   • Potensi duplikat berdasarkan review_id: {unique_review_ids:,} rows")
@@ -166,13 +160,11 @@ else:
     unique_content = len(df_merged) - df_merged[['user', 'content']].drop_duplicates().shape[0]
     print(f"   • Potensi duplikat berdasarkan user+content: {unique_content:,} rows")
 
-# Save master file
 if total_rows > 0:
     save_single_file(df_merged, save_folder, MASTER_FILE)
 else:
     print("[Warn] Tidak ada data untuk disimpan.")
 
-# ----------------- PREPARE DISPLAY -----------------
 if isinstance(display_limit, int) and display_limit > 0:
     df_display = df_merged.head(display_limit).reset_index(drop=True)
 else:
@@ -182,11 +174,9 @@ total_display = len(df_display)
 total_pages = max(1, math.ceil(total_display / rows_per_page))
 page_idx = 0
 
-# Save display snapshot
 if total_display > 0:
     save_single_file(df_display, save_folder, DISPLAY_SNAPSHOT_FILE)
 
-# ----------------- UI -----------------
 prev_btn = widgets.Button(description="⬅ Prev", layout=widgets.Layout(width="90px"))
 next_btn = widgets.Button(description="Next ➡", layout=widgets.Layout(width="90px"))
 save_page_btn = widgets.Button(description="💾 Save Page", button_style="success")
@@ -260,7 +250,6 @@ show_files_btn.on_click(show_saved_files)
 update_info()
 show_page(page_idx)
 
-# ----------------- SUMMARY -----------------
 print("\n" + "="*60)
 print("📋 SUMMARY")
 print("="*60)
