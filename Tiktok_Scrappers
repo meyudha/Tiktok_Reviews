@@ -1,4 +1,4 @@
- !pip install google-play-scraper
+!pip install google-play-scraper
 
 from google_play_scraper import reviews, Sort
 import pandas as pd
@@ -10,29 +10,19 @@ import os
 from datetime import datetime
 import glob
 
-# ==================== USER CONFIG ====================
 app_id = "com.zhiliaoapp.musically"
-jumlah_data = 50000    # JUMLAH DATA YANG AKAN DITAMPILKAN DAN DISIMPAN
-per_page = 15000       # Rows per page untuk tampilan
+jumlah_data = 50000
+per_page = 15000
 save_folder = "./saved_reviews"
 os.makedirs(save_folder, exist_ok=True)
-
-# Master menyimpan SEMUA data historis (arsip)
-# Display/Run hanya menyimpan sesuai jumlah_data
-merge_existing = True  # True = gabung ke master, False = tidak
-
-# NAMA FILE TETAP (tidak pakai timestamp)
+merge_existing = True
 MASTER_FILE = "reviews_master_latest.csv"
 RUN_SNAPSHOT_FILE = "reviews_run_snapshot.csv"
 DISPLAY_SNAPSHOT_FILE = "reviews_display_snapshot.csv"
 PAGE_FILE_PREFIX = "reviews_page"
-# =====================================================
 
 def cleanup_merged_files():
-    """Hapus semua file merged_* yang tidak diinginkan"""
     print("\n🧹 Cleaning up unwanted merged files...")
-
-    # Hapus di root folder
     merged_files = glob.glob("merged_*.csv")
     for f in merged_files:
         try:
@@ -40,8 +30,6 @@ def cleanup_merged_files():
             print(f"   [✓] Deleted: {f}")
         except Exception as e:
             print(f"   [✗] Could not delete {f}: {e}")
-
-    # Hapus di save_folder
     merged_files_in_folder = glob.glob(os.path.join(save_folder, "merged_*.csv"))
     for f in merged_files_in_folder:
         try:
@@ -49,70 +37,37 @@ def cleanup_merged_files():
             print(f"   [✓] Deleted: {f}")
         except Exception as e:
             print(f"   [✗] Could not delete {f}: {e}")
-
     if not merged_files and not merged_files_in_folder:
         print("   No merged files found.")
 
 def fetch_and_clean(app_id, jumlah_data):
-    """Fetch reviews dari Google Play dan bersihkan data"""
     print("\n📥 Fetching reviews from Google Play...")
     print(f"   Requesting: {jumlah_data:,} reviews")
-
-    result, _ = reviews(
-        app_id,
-        lang='en',
-        country='us',
-        sort=Sort.NEWEST,
-        count=jumlah_data
-    )
-
+    result, _ = reviews(app_id, lang='en', country='us', sort=Sort.NEWEST, count=jumlah_data)
     df = pd.DataFrame(result)
-    df_clean = df[[
-        "reviewId",
-        "userName",
-        "content",
-        "score",
-        "thumbsUpCount",
-        "reviewCreatedVersion",
-        "at",
-        "appVersion"
-    ]].copy()
-
-    # Bersihkan data
+    df_clean = df[["reviewId","userName","content","score","thumbsUpCount","reviewCreatedVersion","at","appVersion"]].copy()
     df_clean = df_clean.dropna(subset=['content'])
     df_clean = df_clean.drop_duplicates(subset=['reviewId'])
     df_clean['at'] = pd.to_datetime(df_clean['at'])
     df_clean = df_clean.sort_values('at', ascending=False).reset_index(drop=True)
-
     print(f"   ✓ Fetched: {len(df_clean):,} reviews (after cleaning)")
     return df_clean
 
 def find_latest_master(folder):
-    """Cari file master terbaru"""
     master_path = os.path.join(folder, MASTER_FILE)
     if os.path.exists(master_path):
         return master_path
     return None
 
 def save_single_file(df, folder, filename):
-    """Simpan dataframe ke file dengan nama tetap. Hapus file lama jika ada."""
     csv_path = os.path.join(folder, filename)
-
-    # Hapus file lama jika ada
     if os.path.exists(csv_path):
         os.remove(csv_path)
-
-    # Simpan file baru
     df.to_csv(csv_path, index=False)
     print(f"   [✓] Saved: {filename} ({len(df):,} rows)")
-
     return csv_path
 
 def merge_with_master_keep_newest(df_new, folder):
-    """
-    Gabungkan df_new dengan master (jika ada), prioritaskan entri terbaru.
-    Master menyimpan SEMUA data historis.
-    """
     master_path = find_latest_master(folder)
     if master_path is None:
         print("\n📦 Creating new master file...")
@@ -121,66 +76,45 @@ def merge_with_master_keep_newest(df_new, folder):
         print(f"\n📦 Merging with existing master...")
         master_df = pd.read_csv(master_path, parse_dates=['at'])
         print(f"   Old master: {len(master_df):,} rows")
-
         combined = pd.concat([master_df, df_new], axis=0, ignore_index=True)
         combined['at'] = pd.to_datetime(combined['at'])
-
-        # Sort newest-first dan hapus duplikat (keep newest)
         combined = combined.sort_values('at', ascending=False)
         combined = combined.drop_duplicates(subset=['reviewId'], keep='first').reset_index(drop=True)
-
         print(f"   New master: {len(combined):,} rows (after merge & dedup)")
         master_df = combined
-
-    # Simpan master (hapus lama, simpan baru)
     save_single_file(master_df, folder, MASTER_FILE)
-
     return master_df
 
-# ==================== MAIN FLOW ====================
 print("="*70)
-print("🚀 GOOGLE PLAY REVIEWS SCRAPER - FIXED VERSION")
+print("🚀 GOOGLE PLAY REVIEWS SCRAPER - CLEAN VERSION")
 print("="*70)
-
-# Cleanup file merged_* yang tidak diinginkan
 cleanup_merged_files()
-
-# 1. Fetch data dari Google Play
 df_clean_run = fetch_and_clean(app_id, jumlah_data)
-
-# 2. Simpan snapshot hasil run (hapus lama, simpan baru)
 print("\n💾 Saving run snapshot...")
 save_single_file(df_clean_run, save_folder, RUN_SNAPSHOT_FILE)
 
-# 3. Jika merge aktif, gabungkan ke master (untuk arsip)
 if merge_existing:
     master_df = merge_with_master_keep_newest(df_clean_run, save_folder)
 else:
     print("\n⚠️  Merge disabled - master file not updated")
     master_df = None
 
-# 4. Tentukan dataframe untuk TAMPILAN dan SAVE
-#    SELALU gunakan hasil run terbaru, TEPAT sejumlah jumlah_data
 print("\n📊 Preparing display data...")
 df_display = df_clean_run.copy()
 df_display = df_display.sort_values('at', ascending=False)
 df_display = df_display.drop_duplicates(subset=['reviewId'], keep='first')
-df_display = df_display.head(jumlah_data)  # PASTIKAN TEPAT jumlah_data
+df_display = df_display.head(jumlah_data)
 df_display = df_display.reset_index(drop=True)
-
 print(f"   Display rows: {len(df_display):,} (expected: {jumlah_data:,})")
 
-# 5. Simpan display snapshot (HANYA data yang akan ditampilkan)
 print("\n💾 Saving display snapshot...")
 save_single_file(df_display, save_folder, DISPLAY_SNAPSHOT_FILE)
 
-# Validasi: Pastikan jumlah data sesuai
 if len(df_display) != min(jumlah_data, len(df_clean_run)):
     print(f"\n⚠️  WARNING: Expected {jumlah_data:,} rows, got {len(df_display):,} rows")
 else:
     print(f"\n✅ SUCCESS: Data saved exactly as requested ({len(df_display):,} rows)")
 
-# ==================== PAGINASI & UI ====================
 total_pages = math.ceil(len(df_display) / per_page) if len(df_display) > 0 else 1
 page = 0
 
@@ -239,10 +173,8 @@ def show_saved_files(b):
     print("\n" + "="*70)
     print("📁 SAVED FILES IN FOLDER:")
     print("="*70)
-
     all_files = glob.glob(os.path.join(save_folder, "*.csv"))
     all_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
-
     if not all_files:
         print("No files found.")
     else:
@@ -258,21 +190,16 @@ def show_saved_files(b):
                 pass
             print(f"\n📄 {os.path.basename(f)}")
             print(f"   Size: {size_mb:.2f} MB | Rows: {rows_count} | Modified: {mtime}")
-
     print("\n" + "="*70)
 
-# Hubungkan handler
 prev_btn.on_click(on_prev)
 next_btn.on_click(on_next)
 save_page_btn.on_click(save_current_page)
 save_all_btn.on_click(save_full_again)
 show_files_btn.on_click(show_saved_files)
-
-# Initial display
 update_label()
 show_page(page)
 
-# ==================== INFO RINGKASAN ====================
 print("\n" + "="*70)
 print("📊 SUMMARY INFORMATION")
 print("="*70)
@@ -300,6 +227,4 @@ print("  • Save Full    → Re-save complete display dataset")
 print("  • Show Files   → List all saved CSV files")
 print("  • Mount Drive  → For permanent save: mount drive & change save_folder")
 print("="*70)
-
-# Final cleanup check
 cleanup_merged_files()
